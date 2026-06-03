@@ -1,0 +1,94 @@
+name: Scrape Vaucluse Studios
+
+on:
+  # Run every Thursday at 8:00 PM UTC
+  schedule:
+    - cron: '0 20 * * 4'
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
+
+env:
+  PYTHONUNBUFFERED: 1
+  HF_HOME: /home/runner/.cache/huggingface
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Cache Hugging Face models
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/huggingface
+          key: huggingface-${{ runner.os }}-${{ hashFiles('src/config.py') }}
+          restore-keys: |
+            huggingface-${{ runner.os }}-
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-glx \
+            libglib2.0-0 \
+            libsm6 \
+            libxext6 \
+            libxrender-dev \
+            libgomp1
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Verify imports
+        run: |
+          python -c "
+          print('Verifying imports...')
+          import sys
+          sys.path.insert(0, '.')
+          
+          # Just import modules — don't call any functions that make network requests
+          from src import config
+          print(f'  config OK: source={config.SOURCE}, brand={config.BRAND}, model={config.EMBEDDING_MODEL}')
+          
+          from src import utils
+          print(f'  utils OK')
+          
+          from src import scraper
+          print(f'  scraper OK')
+          
+          from src import embedder
+          print(f'  embedder OK')
+          
+          from src import database
+          print(f'  database OK')
+          
+          print('All modules import successfully!')
+          "
+
+      - name: Run scraper
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          echo "Starting scraper at $(date)..."
+          python -m src.main 2>&1
+          echo "Scraper finished at $(date)."
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraper-logs
+          path: |
+            *.log
