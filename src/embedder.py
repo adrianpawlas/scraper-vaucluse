@@ -2,6 +2,7 @@
 
 import io
 import logging
+import os
 import threading
 import time
 from typing import Optional
@@ -23,21 +24,41 @@ logger = logging.getLogger(__name__)
 # Global model cache (load once, reuse) – thread-safe
 _model = None
 _processor = None
+_model_load_failed = False
 _model_lock = threading.Lock()
 
 
 def get_model_and_processor():
-    """Lazy-load the SigLIP model and processor (thread-safe singleton)."""
-    global _model, _processor
+    """Lazy-load the SigLIP model and processor (thread-safe singleton).
+
+    Returns (None, None) if loading previously failed — callers must handle that.
+    This caches failures so we don't retry the download on every single product.
+    """
+    global _model, _processor, _model_load_failed
+
+    # Fast path: already failed, don't even try
+    if _model_load_failed:
+        return None, None
+
     if _model is None or _processor is None:
         with _model_lock:
             # Double-check after acquiring lock
             if _model is None or _processor is None:
                 logger.info(f"Loading model: {EMBEDDING_MODEL}")
-                _model = AutoModel.from_pretrained(EMBEDDING_MODEL)
-                _processor = AutoProcessor.from_pretrained(EMBEDDING_MODEL)
-                _model.eval()
-                logger.info(f"Model loaded. Embedding dimension: {EMBEDDING_DIM}")
+                try:
+                    # Support HF_TOKEN env var for authenticated (higher rate-limited) downloads
+                    hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN")
+                    _model = AutoModel.from_pretrained(EMBEDDING_MODEL, token=hf_token)
+                    _processor = AutoProcessor.from_pretrained(EMBEDDING_MODEL, token=hf_token)
+                    _model.eval()
+                    logger.info(f"Model loaded. Embedding dimension: {EMBEDDING_DIM}")
+                except Exception as e:
+                    logger.error(f"Failed to load model {EMBEDDING_MODEL}: {e}")
+                    _model_load_failed = True
+                    _model = None
+                    _processor = None
+                    return None, None
+
     return _model, _processor
 
 
@@ -70,6 +91,9 @@ def generate_image_embedding(image: Image.Image, normalize: bool = True) -> Opti
     """
     try:
         model, processor = get_model_and_processor()
+        if model is None or processor is None:
+            logger.warning("Model not available — cannot generate image embedding")
+            return None
         inputs = processor(images=image, return_tensors="pt")
 
         with torch.no_grad():
@@ -111,6 +135,9 @@ def generate_text_embedding(text: str, normalize: bool = True) -> Optional[list[
 
     try:
         model, processor = get_model_and_processor()
+        if model is None or processor is None:
+            logger.warning("Model not available — cannot generate text embedding")
+            return None
         inputs = processor(
             text=[text],
             padding="max_length",

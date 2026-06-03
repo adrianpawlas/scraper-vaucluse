@@ -46,6 +46,32 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Pre-download embedding model
+        # Download model once before scraping, so it's cached.
+        # If this fails, the scraper will run without embeddings (skips gracefully).
+        # Uses HF_TOKEN if available for higher rate limits.
+        continue-on-error: true
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python -c "
+          import os, sys
+          sys.path.insert(0, '.')
+          from src.config import EMBEDDING_MODEL
+          from transformers import AutoModel, AutoProcessor
+          
+          hf_token = os.environ.get('HF_TOKEN') or os.environ.get('HUGGINGFACE_TOKEN')
+          print(f'Pre-downloading model: {EMBEDDING_MODEL}')
+          if hf_token:
+              print('Using HF_TOKEN for authenticated download (higher rate limits)')
+          else:
+              print('No HF_TOKEN set — download may be rate-limited')
+          
+          AutoModel.from_pretrained(EMBEDDING_MODEL, token=hf_token)
+          AutoProcessor.from_pretrained(EMBEDDING_MODEL, token=hf_token)
+          print('Model downloaded successfully!')
+          "
+
       - name: Verify imports
         run: |
           python -c "
@@ -76,6 +102,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           echo "Starting scraper at $(date)..."
           python -m src.main 2>&1
