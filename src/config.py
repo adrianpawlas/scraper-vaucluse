@@ -42,8 +42,13 @@ FALLBACK_EXCHANGE_RATES = {
     "AUD": {"AUD": 1.0, "EUR": 0.60, "USD": 0.66},
 }
 
+# Batch & Throttling Settings
+BATCH_UPSERT_SIZE = 50  # Products per batch insert
+EMBEDDING_DELAY = 0.5   # Seconds between embedding API calls
+MAX_CONCURRENT_WORKERS = 3
+STALE_MISSED_THRESHOLD = 2  # Consecutive missed runs before deletion
+
 # Scraping Settings
 REQUEST_TIMEOUT = 30
 DOWNLOAD_TIMEOUT = 60
 MAX_RETRIES = 3
-BATCH_SIZE = 10  # Products to process concurrently

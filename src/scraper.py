@@ -244,7 +244,7 @@ def parse_shopify_product(
         "gender": GENDER,
         "size": sorted_sizes if sorted_sizes else None,
         "second_hand": SECOND_HAND,
-        "country": "AU",
+        "country": None,
         "compressed_image_url": None,
         "tags": tags_list if tags_list else None,
         "other": None,
