@@ -35,14 +35,10 @@ jobs:
             huggingface-${{ runner.os }}-
 
       - name: Install system dependencies
+        # torch CPU on Ubuntu 24.04 only needs libgomp1 for OpenMP
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libgl1-mesa-glx \
-            libglib2.0-0 \
-            libsm6 \
-            libxext6 \
-            libxrender-dev \
             libgomp1
 
       - name: Install Python dependencies
